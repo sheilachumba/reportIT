@@ -144,12 +144,18 @@ final class Database
                 severity TEXT NOT NULL,
                 description TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT "Open",
+                assigned_to_name TEXT,
+                assigned_to_email TEXT,
                 created_at TEXT NOT NULL,
+                updated_at TEXT,
+                resolved_at TEXT,
                 FOREIGN KEY(campus_id) REFERENCES campuses(id),
                 FOREIGN KEY(building_id) REFERENCES buildings(id),
                 FOREIGN KEY(room_id) REFERENCES rooms(id),
                 FOREIGN KEY(device_id) REFERENCES devices(id)
             )');
+
+            $this->ensureTicketsColumns();
 
             $this->pdo->exec('CREATE TABLE IF NOT EXISTS ticket_attachments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -240,6 +246,10 @@ final class Database
                 description TEXT NOT NULL,
                 status VARCHAR(30) NOT NULL DEFAULT "Open",
                 created_at DATETIME NOT NULL,
+                assigned_to_name VARCHAR(190) NULL,
+                assigned_to_email VARCHAR(190) NULL,
+                updated_at DATETIME NULL,
+                resolved_at DATETIME NULL,
                 UNIQUE KEY uq_tickets_ticket_number (ticket_number),
                 KEY idx_tickets_created_at (created_at),
                 KEY idx_tickets_campus_id (campus_id),
@@ -251,6 +261,8 @@ final class Database
                 CONSTRAINT fk_tickets_room FOREIGN KEY (room_id) REFERENCES rooms(id),
                 CONSTRAINT fk_tickets_device FOREIGN KEY (device_id) REFERENCES devices(id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+            $this->ensureTicketsColumns();
 
             $this->pdo->exec('CREATE TABLE IF NOT EXISTS ticket_attachments (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -358,6 +370,29 @@ final class Database
 
             try {
                 $this->pdo->exec('CREATE INDEX idx_users_campus_id ON users(campus_id)');
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+
+    private function ensureTicketsColumns(): void
+    {
+        $columns = [
+            'assigned_to_name' => $this->driver === 'mysql' ? 'VARCHAR(190) NULL' : 'TEXT',
+            'assigned_to_email' => $this->driver === 'mysql' ? 'VARCHAR(190) NULL' : 'TEXT',
+            'updated_at' => $this->driver === 'mysql' ? 'DATETIME NULL' : 'TEXT',
+            'resolved_at' => $this->driver === 'mysql' ? 'DATETIME NULL' : 'TEXT',
+        ];
+
+        foreach ($columns as $col => $type) {
+            try {
+                $this->pdo->query('SELECT ' . $col . ' FROM tickets LIMIT 1');
+                continue;
+            } catch (\Throwable $e) {
+            }
+
+            try {
+                $this->pdo->exec('ALTER TABLE tickets ADD COLUMN ' . $col . ' ' . $type);
             } catch (\Throwable $e) {
             }
         }

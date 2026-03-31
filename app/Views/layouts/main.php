@@ -40,6 +40,17 @@ declare(strict_types=1);
       </div>
     </div>
 
+    <?php $flashNotice = $_SESSION['_flash']['notice'] ?? null; ?>
+    <?php $flashError = $_SESSION['_flash']['error'] ?? null; ?>
+    <?php if (is_string($flashNotice) && $flashNotice !== ''): ?>
+      <?php unset($_SESSION['_flash']['notice']); ?>
+      <div class="alert success"><?php echo htmlspecialchars($flashNotice); ?></div>
+    <?php endif; ?>
+    <?php if (is_string($flashError) && $flashError !== ''): ?>
+      <?php unset($_SESSION['_flash']['error']); ?>
+      <div class="alert"><?php echo htmlspecialchars($flashError); ?></div>
+    <?php endif; ?>
+
     <?php echo $content; ?>
 
     <div class="footer-note">

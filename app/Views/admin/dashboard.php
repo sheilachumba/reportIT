@@ -92,6 +92,7 @@ $sevColor = [
       <h2>Recent Tickets</h2>
       <p>Latest submissions (most recent first).</p>
     </div>
+    <a class="btn btn-secondary" href="/admin/tickets">View All Tickets</a>
   </div>
   <div class="card-b" style="padding-top:10px">
     <table class="table">
@@ -130,7 +131,11 @@ $sevColor = [
               $reported = (string)($t['created_at'] ?? '');
             ?>
             <tr>
-              <td><strong><?php echo htmlspecialchars((string)($t['ticket_number'] ?? '')); ?></strong></td>
+              <td>
+                <a href="/admin/tickets/view?ticket=<?php echo urlencode((string)($t['ticket_number'] ?? '')); ?>" style="text-decoration:none; color:inherit">
+                  <strong><?php echo htmlspecialchars((string)($t['ticket_number'] ?? '')); ?></strong>
+                </a>
+              </td>
               <td><?php echo htmlspecialchars($location); ?></td>
               <td><?php echo htmlspecialchars($device); ?></td>
               <td><span class="chip <?php echo $sevClass; ?>"><?php echo htmlspecialchars($sev); ?></span></td>

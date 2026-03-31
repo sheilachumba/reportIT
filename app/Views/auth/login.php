@@ -12,8 +12,13 @@ $next = (string)($_GET['next'] ?? '/');
 <div class="grid">
   <div class="card">
     <div class="card-h">
+      <div style="display:flex; align-items:center; gap:12px">
+        <img src="/assets/ksg-logo.png" alt="KSG" style="height:44px; width:auto" />
+        <div>
       <h2>Login</h2>
       <p>Use your official KSG email account to access the reporting system.</p>
+        </div>
+      </div>
     </div>
     <div class="card-b">
       <?php if (is_string($notice) && $notice !== ''): ?>

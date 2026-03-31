@@ -2,13 +2,39 @@
 
 declare(strict_types=1);
 
-return [
+$localOverrides = [];
+$localPath = __DIR__ . '/local.php';
+if (is_file($localPath)) {
+    $tmp = require $localPath;
+    if (is_array($tmp)) {
+        $localOverrides = $tmp;
+    }
+}
+
+$smtpEnabledRaw = getenv('SMTP_ENABLED');
+$smtpEnabled = $smtpEnabledRaw === false ? true : filter_var((string)$smtpEnabledRaw, FILTER_VALIDATE_BOOLEAN);
+$smtpUsername = (string)(getenv('SMTP_USERNAME') ?: '');
+$smtpPassword = (string)(getenv('SMTP_PASSWORD') ?: '');
+$smtpHost = (string)(getenv('SMTP_HOST') ?: 'smtp.gmail.com');
+$smtpPort = (int)(getenv('SMTP_PORT') ?: 587);
+$smtpEncryption = (string)(getenv('SMTP_ENCRYPTION') ?: 'tls');
+$smtpFromEmail = (string)(getenv('SMTP_FROM_EMAIL') ?: $smtpUsername);
+$smtpFromName = (string)(getenv('SMTP_FROM_NAME') ?: 'KSGITREPORT');
+$smtpEhloHost = (string)(getenv('SMTP_EHLO_HOST') ?: 'localhost');
+
+$config = [
     'app' => [
         'name' => 'ReportIT',
         'base_url' => '',
         'timezone' => 'Africa/Nairobi',
         'campuses' => ['HQ', 'Nairobi', 'Embu', 'Matuga', 'Mombasa', 'Baringo'],
         'admin_emails' => ['admin@ksg.ac.ke'],
+        'it_staff' => [
+            ['name' => 'IT Admin', 'email' => 'admin@ksg.ac.ke'],
+            ['name' => 'Denis Kiplagat', 'email' => 'denis.kiplagat@ksg.ac.ke'],
+            ['name' => 'Paul Nzoka', 'email' => 'paul.nzoka@ksg.ac.ke'],
+            ['name' => 'Sheila Cherop', 'email' => 'sheila.cherop@ksg.ac.ke'],
+        ],
     ],
     'db' => [
         'driver' => 'mysql',
@@ -31,6 +57,24 @@ return [
     ],
     'notifications' => [
         'critical_recipients' => ['admin@ksg.ac.ke'],
-        'from' => 'no-reply@ksg.ac.ke',
+        'from' => $smtpUsername !== '' ? $smtpUsername : 'no-reply@ksg.ac.ke',
+        'from_name' => 'KSGITREPORT',
+    ],
+    'smtp' => [
+        'enabled' => $smtpEnabled && $smtpUsername !== '' && $smtpPassword !== '' && $smtpFromEmail !== '',
+        'host' => $smtpHost,
+        'port' => $smtpPort,
+        'encryption' => $smtpEncryption,
+        'username' => $smtpUsername,
+        'password' => $smtpPassword,
+        'from_email' => $smtpFromEmail,
+        'from_name' => $smtpFromName,
+        'ehlo_host' => $smtpEhloHost,
     ],
 ];
+
+if (is_array($localOverrides) && count($localOverrides) > 0) {
+    $config = array_replace_recursive($config, $localOverrides);
+}
+
+return $config;

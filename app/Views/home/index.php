@@ -9,8 +9,13 @@ $user = $user ?? null;
 <div class="grid">
   <div class="card">
     <div class="card-h">
-      <h2>Welcome</h2>
-      <p>Report IT issues by campus, building, room and device. Tickets are logged instantly.</p>
+      <div style="display:flex; align-items:center; gap:12px">
+        <img src="/assets/ksg-logo.png" alt="KSG" style="height:44px; width:auto" />
+        <div>
+          <h2>Welcome</h2>
+          <p>Report IT issues by campus, building, room and device. Tickets are logged instantly.</p>
+        </div>
+      </div>
     </div>
     <div class="card-b">
       <?php if (is_array($user) && !empty($user['email'])): ?>

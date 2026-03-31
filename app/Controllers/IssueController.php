@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Controller;
+use App\Core\Mailer;
 use PDO;
 
 final class IssueController extends Controller
@@ -123,6 +124,11 @@ final class IssueController extends Controller
             ':status' => 'Open',
             ':created_at' => $createdAt,
         ]);
+
+        try {
+            $pdo->prepare('UPDATE tickets SET updated_at = :u WHERE ticket_number = :t')->execute([':u' => $createdAt, ':t' => $ticketNumber]);
+        } catch (\Throwable $e) {
+        }
 
         $ticketId = (int) $pdo->lastInsertId();
 
@@ -304,8 +310,6 @@ final class IssueController extends Controller
             return;
         }
 
-        $from = (string)($this->config['notifications']['from'] ?? 'no-reply@localhost');
-
         $pdo = $this->db->pdo();
         $stmt = $pdo->prepare('SELECT c.name AS campus, b.name AS building, r.name AS room,
                 d.device_type AS device_type, d.label AS device_label
@@ -330,24 +334,54 @@ final class IssueController extends Controller
         $deviceLabel = (string)($row['device_label'] ?? '');
 
         $subject = '[CRITICAL] IT Issue ' . $ticketNumber;
-        $body = "A CRITICAL IT issue has been reported.\n\n" .
-            "Ticket: {$ticketNumber}\n" .
-            "Campus: {$campus}\n" .
-            "Building: {$building}\n" .
-            "Room: {$room}\n" .
-            "Device: {$deviceType}" . ($deviceLabel !== '' ? " — {$deviceLabel}" : '') . "\n\n" .
-            "Description:\n{$description}\n";
 
-        $headers = "From: {$from}\r\n" .
-            "MIME-Version: 1.0\r\n" .
-            "Content-Type: text/plain; charset=UTF-8\r\n";
+        $baseUrl = (string)($this->config['app']['base_url'] ?? '');
+        if ($baseUrl === '') {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost:8000');
+            $baseUrl = $scheme . '://' . $host;
+        }
 
+        $link = rtrim($baseUrl, '/') . '/admin/tickets/view?ticket=' . urlencode($ticketNumber);
+        $logoUrl = rtrim($baseUrl, '/') . '/assets/ksg-logo.png';
+        $logoSrc = $logoUrl;
+        $inlineImages = [];
+
+        $logoPath = __DIR__ . '/../../public/assets/ksg-logo.png';
+        if (is_file($logoPath)) {
+            $data = @file_get_contents($logoPath);
+            if (is_string($data) && $data !== '') {
+                $logoSrc = 'cid:ksg_logo';
+                $inlineImages = [
+                    [
+                        'cid' => 'ksg_logo',
+                        'mime' => 'image/png',
+                        'filename' => 'ksg-logo.png',
+                        'data' => $data,
+                    ]
+                ];
+            }
+        }
+
+        $title = 'CRITICAL Ticket: ' . $ticketNumber;
+        $intro = 'A CRITICAL IT issue has been reported. Please review and assign/resolve immediately.';
+        $rows = [
+            'Ticket' => $ticketNumber,
+            'Severity' => 'Critical',
+            'Location' => trim($campus . ($building !== '' ? ' — ' . $building : '') . ($room !== '' ? ' — ' . $room : '')),
+            'Device' => trim($deviceType . ($deviceLabel !== '' ? ' — ' . $deviceLabel : '')),
+            'Description' => $description,
+        ];
+
+        $html = Mailer::renderBrandedEmail($title, $intro, $rows, $link, 'Open Ticket', $logoSrc);
+
+        $mailer = new Mailer($this->config);
         $sentAny = false;
         foreach ($recipients as $to) {
             if (!is_string($to) || trim($to) === '') {
                 continue;
             }
-            $ok = @mail($to, $subject, $body, $headers);
+            $ok = $mailer->sendHtml($to, $subject, $html, '', $inlineImages);
             if ($ok) {
                 $sentAny = true;
             }

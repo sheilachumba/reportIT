@@ -12,6 +12,7 @@ require __DIR__ . '/../app/Core/Database.php';
 require __DIR__ . '/../app/Core/View.php';
 require __DIR__ . '/../app/Core/Controller.php';
 require __DIR__ . '/../app/Core/Router.php';
+require __DIR__ . '/../app/Core/Mailer.php';
 require __DIR__ . '/../app/Controllers/IssueController.php';
 require __DIR__ . '/../app/Controllers/ApiController.php';
 require __DIR__ . '/../app/Controllers/HomeController.php';
@@ -35,6 +36,10 @@ $router->post('/2fa', [App\Controllers\AuthController::class, 'verify2fa']);
 $router->get('/logout', [App\Controllers\AuthController::class, 'logout']);
 
 $router->get('/admin', [App\Controllers\AdminController::class, 'dashboard']);
+$router->get('/admin/tickets', [App\Controllers\AdminController::class, 'tickets']);
+$router->get('/admin/tickets/view', [App\Controllers\AdminController::class, 'ticketView']);
+$router->post('/admin/tickets/update', [App\Controllers\AdminController::class, 'ticketUpdate']);
+$router->get('/admin/attachment', [App\Controllers\AdminController::class, 'attachment']);
 
 $router->get('/issue/new', [App\Controllers\IssueController::class, 'create']);
 $router->post('/issue', [App\Controllers\IssueController::class, 'store']);
