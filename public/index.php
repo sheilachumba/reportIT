@@ -37,6 +37,8 @@ $router->get('/logout', [App\Controllers\AuthController::class, 'logout']);
 
 $router->get('/admin', [App\Controllers\AdminController::class, 'dashboard']);
 $router->get('/admin/tickets', [App\Controllers\AdminController::class, 'tickets']);
+$router->get('/admin/staff', [App\Controllers\AdminController::class, 'staffOverview']);
+$router->get('/admin/staff/data', [App\Controllers\AdminController::class, 'staffData']);
 $router->get('/admin/tickets/view', [App\Controllers\AdminController::class, 'ticketView']);
 $router->post('/admin/tickets/update', [App\Controllers\AdminController::class, 'ticketUpdate']);
 $router->get('/admin/attachment', [App\Controllers\AdminController::class, 'attachment']);

@@ -32,6 +32,8 @@ declare(strict_types=1);
           <?php $admins = $this->config['app']['admin_emails'] ?? []; ?>
           <?php if (is_array($admins) && in_array((string)($u['email'] ?? ''), $admins, true)): ?>
             <a class="btn btn-secondary" href="/admin">Admin Dashboard</a>
+            <a class="btn btn-secondary" href="/admin/tickets">Ticket Management</a>
+            <a class="btn btn-secondary" href="/admin/staff">Staff Overview</a>
           <?php endif; ?>
           <a class="btn btn-secondary" href="/logout">Logout</a>
         <?php else: ?>

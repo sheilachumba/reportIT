@@ -133,6 +133,124 @@ final class AdminController extends Controller
         ]);
     }
 
+    public function staffOverview(): void
+    {
+        $this->requireAdmin();
+
+        $staff = $this->config['app']['it_staff'] ?? [];
+        if (!is_array($staff)) {
+            $staff = [];
+        }
+
+        $selectedEmail = trim((string)($_GET['email'] ?? ''));
+        if ($selectedEmail === '') {
+            foreach ($staff as $s) {
+                if (!is_array($s)) {
+                    continue;
+                }
+                $e = trim((string)($s['email'] ?? ''));
+                if ($e !== '') {
+                    $selectedEmail = $e;
+                    break;
+                }
+            }
+        }
+
+        $this->view('admin/staff', [
+            'pageTitle' => 'Staff Overview',
+            'pageSubtitle' => 'IT staff and allocated tickets',
+            'staff' => $staff,
+            'selectedEmail' => $selectedEmail,
+        ]);
+    }
+
+    public function staffData(): void
+    {
+        $this->requireAdmin();
+
+        $email = trim((string)($_GET['email'] ?? ''));
+        if ($email === '') {
+            $this->json(['ok' => false, 'error' => 'Missing staff email.'], 400);
+            return;
+        }
+
+        $staff = $this->config['app']['it_staff'] ?? [];
+        if (!is_array($staff)) {
+            $this->json(['ok' => false, 'error' => 'No staff configured.'], 404);
+            return;
+        }
+
+        $found = null;
+        foreach ($staff as $s) {
+            if (!is_array($s)) {
+                continue;
+            }
+            $se = trim((string)($s['email'] ?? ''));
+            if ($se !== '' && strcasecmp($se, $email) === 0) {
+                $found = $s;
+                $found['email'] = $se;
+                break;
+            }
+        }
+
+        if (!is_array($found)) {
+            $this->json(['ok' => false, 'error' => 'Staff not found.'], 404);
+            return;
+        }
+
+        $card = $this->buildStaffCard($found);
+        $this->json(['ok' => true, 'data' => $card], 200);
+    }
+
+    private function buildStaffCard(array $staff): array
+    {
+        $email = trim((string)($staff['email'] ?? ''));
+
+        $pdo = $this->db->pdo();
+
+        $counts = [
+            'total' => 0,
+            'open' => 0,
+            'in_progress' => 0,
+            'resolved' => 0,
+        ];
+
+        if ($email !== '') {
+            $stmtC = $pdo->prepare("SELECT status, COUNT(*) AS c FROM tickets WHERE assigned_to_email = :e GROUP BY status");
+            $stmtC->execute([':e' => $email]);
+            $rows = $stmtC->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as $r) {
+                $st = (string)($r['status'] ?? '');
+                $c = (int)($r['c'] ?? 0);
+                $counts['total'] += $c;
+                if ($st === 'Open') {
+                    $counts['open'] += $c;
+                } elseif ($st === 'In Progress') {
+                    $counts['in_progress'] += $c;
+                } elseif ($st === 'Resolved') {
+                    $counts['resolved'] += $c;
+                }
+            }
+        }
+
+        $tickets = [];
+        if ($email !== '') {
+            $stmtT = $pdo->prepare('SELECT ticket_number, description, severity, status, created_at
+                FROM tickets
+                WHERE assigned_to_email = :e
+                ORDER BY created_at DESC
+                LIMIT 20');
+            $stmtT->execute([':e' => $email]);
+            $tickets = $stmtT->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        return [
+            'staff' => $staff,
+            'counts' => $counts,
+            'tickets' => is_array($tickets) ? $tickets : [],
+        ];
+    }
+
     public function ticketView(): void
     {
         $this->requireAdmin();
@@ -246,6 +364,16 @@ final class AdminController extends Controller
         if ($action === 'mark_resolved') {
             $stmt = $pdo->prepare("UPDATE tickets SET status = 'Resolved', resolved_at = :r, updated_at = :u WHERE ticket_number = :t");
             $stmt->execute([':r' => $now, ':u' => $now, ':t' => $ticketNumber]);
+
+            $mailer = new Mailer($this->config);
+            $ok = $this->notifyReporterTicketResolved($ticketNumber, $mailer);
+            if ($ok) {
+                $this->flash('notice', 'Ticket marked as resolved and reporter notified by email.');
+            } else {
+                $err = trim($mailer->lastError());
+                $this->flash('error', 'Ticket marked as resolved but reporter email failed to send.' . ($err !== '' ? (' Error: ' . $err) : ''));
+            }
+
             $this->redirect('/admin/tickets/view?ticket=' . urlencode($ticketNumber));
         }
 
@@ -256,6 +384,114 @@ final class AdminController extends Controller
         }
 
         $this->redirect('/admin/tickets/view?ticket=' . urlencode($ticketNumber));
+    }
+
+    private function notifyReporterTicketResolved(string $ticketNumber, Mailer $mailer): bool
+    {
+        $ticketNumber = trim($ticketNumber);
+        if ($ticketNumber === '') {
+            return false;
+        }
+
+        $pdo = $this->db->pdo();
+        $stmt = $pdo->prepare('SELECT
+                t.ticket_number,
+                t.severity,
+                t.status,
+                t.created_at,
+                t.resolved_at,
+                t.reporter_name,
+                t.reporter_email,
+                t.description,
+                c.name AS campus_name,
+                b.name AS building_name,
+                r.name AS room_name,
+                d.device_type,
+                d.label AS device_label
+            FROM tickets t
+            LEFT JOIN campuses c ON c.id = t.campus_id
+            LEFT JOIN buildings b ON b.id = t.building_id
+            LEFT JOIN rooms r ON r.id = t.room_id
+            LEFT JOIN devices d ON d.id = t.device_id
+            WHERE t.ticket_number = :t
+            LIMIT 1');
+        $stmt->execute([':t' => $ticketNumber]);
+        $t = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$t) {
+            return false;
+        }
+
+        $to = trim((string)($t['reporter_email'] ?? ''));
+        if ($to === '') {
+            return false;
+        }
+
+        $baseUrl = (string)($this->config['app']['base_url'] ?? '');
+        if ($baseUrl === '') {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost:8000');
+            $baseUrl = $scheme . '://' . $host;
+        }
+
+        $link = rtrim($baseUrl, '/') . '/issue/confirm?ticket=' . urlencode($ticketNumber);
+        $logoUrl = rtrim($baseUrl, '/') . '/assets/ksg-logo.png';
+        $logoSrc = $logoUrl;
+        $inlineImages = [];
+
+        $logoPath = __DIR__ . '/../../public/assets/ksg-logo.png';
+        if (is_file($logoPath)) {
+            $data = @file_get_contents($logoPath);
+            if (is_string($data) && $data !== '') {
+                $logoSrc = 'cid:ksg_logo';
+                $inlineImages = [
+                    [
+                        'cid' => 'ksg_logo',
+                        'mime' => 'image/png',
+                        'filename' => 'ksg-logo.png',
+                        'data' => $data,
+                    ]
+                ];
+            }
+        }
+
+        $campus = (string)($t['campus_name'] ?? '');
+        $building = (string)($t['building_name'] ?? '');
+        $room = (string)($t['room_name'] ?? '');
+        $deviceType = (string)($t['device_type'] ?? '');
+        $deviceLabel = (string)($t['device_label'] ?? '');
+        $severity = (string)($t['severity'] ?? '');
+        $status = (string)($t['status'] ?? '');
+        $createdAt = (string)($t['created_at'] ?? '');
+        $resolvedAt = (string)($t['resolved_at'] ?? '');
+        $desc = (string)($t['description'] ?? '');
+
+        $subject = 'Resolved: Ticket ' . $ticketNumber;
+        $title = 'Ticket Resolved: ' . $ticketNumber;
+        $intro = 'Your reported IT issue has been resolved. If the issue persists, please reply to this email or log a new ticket.';
+        $rows = [
+            'Ticket' => $ticketNumber,
+            'Severity' => $severity,
+            'Status' => $status,
+            'Reported' => $createdAt,
+            'Resolved' => $resolvedAt,
+            'Location' => trim($campus . ($building !== '' ? ' — ' . $building : '') . ($room !== '' ? ' — ' . $room : '')),
+            'Device' => trim($deviceType . (($deviceLabel !== '' && $deviceLabel !== $deviceType) ? ' — ' . $deviceLabel : '')),
+            'Description' => $desc,
+        ];
+
+        $html = Mailer::renderBrandedEmail($title, $intro, $rows, $link, 'View Ticket', $logoSrc);
+        $ok = $mailer->sendHtml($to, $subject, $html, '', $inlineImages);
+        if ($ok) {
+            return true;
+        }
+
+        $logDir = __DIR__ . '/../../storage/logs';
+        if (!is_dir($logDir)) {
+            @mkdir($logDir, 0777, true);
+        }
+        $line = '[' . date('Y-m-d H:i:s') . '] RESOLVED notify (email not sent) to ' . $to . ' for ' . $ticketNumber . "\n";
+        @file_put_contents($logDir . '/notifications.log', $line, FILE_APPEND);
+        return false;
     }
 
     private function notifyAssignedTicket(string $ticketNumber, string $assigneeEmail, Mailer $mailer): bool
