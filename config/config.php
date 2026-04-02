@@ -71,6 +71,14 @@ $config = [
         'from_name' => $smtpFromName,
         'ehlo_host' => $smtpEhloHost,
     ],
+    'reports' => [
+        'management' => [
+            'enabled' => true,
+            'recipients' => ['admin@ksg.ac.ke'],
+            'default_period' => 'weekly',
+            'subject_prefix' => 'ReportIT Management Report',
+        ],
+    ],
 ];
 
 if (is_array($localOverrides) && count($localOverrides) > 0) {

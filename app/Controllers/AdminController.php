@@ -25,6 +25,168 @@ final class AdminController extends Controller
         return $u;
     }
 
+    public function report(): void
+    {
+        $this->requireAdmin();
+
+        $period = trim((string)($_GET['period'] ?? 'weekly'));
+        if (!in_array($period, ['weekly', 'biweekly', 'custom'], true)) {
+            $period = 'weekly';
+        }
+
+        $now = new \DateTimeImmutable('now');
+        $endDt = $now;
+        $startDt = $now->modify('-7 days');
+
+        if ($period === 'biweekly') {
+            $startDt = $now->modify('-14 days');
+        }
+
+        if ($period === 'custom') {
+            $startRaw = trim((string)($_GET['start'] ?? ''));
+            $endRaw = trim((string)($_GET['end'] ?? ''));
+            try {
+                if ($startRaw !== '') {
+                    $startDt = new \DateTimeImmutable($startRaw . ' 00:00:00');
+                }
+                if ($endRaw !== '') {
+                    $endDt = new \DateTimeImmutable($endRaw . ' 23:59:59');
+                }
+            } catch (\Throwable $e) {
+            }
+        }
+
+        if ($startDt > $endDt) {
+            $tmp = $startDt;
+            $startDt = $endDt;
+            $endDt = $tmp;
+        }
+
+        $start = $startDt->format('Y-m-d H:i:s');
+        $end = $endDt->format('Y-m-d H:i:s');
+
+        $pdo = $this->db->pdo();
+
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM tickets WHERE created_at >= :s AND created_at <= :e');
+        $stmt->execute([':s' => $start, ':e' => $end]);
+        $createdCount = (int)$stmt->fetchColumn();
+
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM tickets WHERE resolved_at IS NOT NULL AND resolved_at >= :s AND resolved_at <= :e');
+        $stmt->execute([':s' => $start, ':e' => $end]);
+        $resolvedCount = (int)$stmt->fetchColumn();
+
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE created_at <= :e AND (resolved_at IS NULL OR resolved_at > :e)");
+        $stmt->execute([':e' => $end]);
+        $openAsOfEnd = (int)$stmt->fetchColumn();
+
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE severity = 'Critical' AND created_at <= :e AND (resolved_at IS NULL OR resolved_at > :e)");
+        $stmt->execute([':e' => $end]);
+        $criticalOpenAsOfEnd = (int)$stmt->fetchColumn();
+
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM tickets WHERE created_at <= :e AND (resolved_at IS NULL OR resolved_at > :e) AND created_at <= :d");
+        $stmt->execute([
+            ':e' => $end,
+            ':d' => $endDt->modify('-7 days')->format('Y-m-d H:i:s'),
+        ]);
+        $aging7 = (int)$stmt->fetchColumn();
+
+        $stmt->execute([
+            ':e' => $end,
+            ':d' => $endDt->modify('-14 days')->format('Y-m-d H:i:s'),
+        ]);
+        $aging14 = (int)$stmt->fetchColumn();
+
+        $severityCounts = ['Critical' => 0, 'High' => 0, 'Medium' => 0, 'Low' => 0];
+        $stmt = $pdo->prepare('SELECT severity, COUNT(*) AS c FROM tickets WHERE created_at >= :s AND created_at <= :e GROUP BY severity');
+        $stmt->execute([':s' => $start, ':e' => $end]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $r) {
+            $k = (string)($r['severity'] ?? '');
+            if (array_key_exists($k, $severityCounts)) {
+                $severityCounts[$k] = (int)($r['c'] ?? 0);
+            }
+        }
+
+        $stmt = $pdo->prepare('SELECT
+                assigned_to_name,
+                assigned_to_email,
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = "Open" THEN 1 ELSE 0 END) AS open_c,
+                SUM(CASE WHEN status = "In Progress" THEN 1 ELSE 0 END) AS prog_c
+            FROM tickets
+            WHERE assigned_to_email IS NOT NULL AND assigned_to_email != "" AND created_at <= :e AND (resolved_at IS NULL OR resolved_at > :e)
+            GROUP BY assigned_to_email, assigned_to_name
+            ORDER BY total DESC');
+        $stmt->execute([':e' => $end]);
+        $workload = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmt = $pdo->prepare('SELECT
+                t.ticket_number,
+                t.severity,
+                t.status,
+                t.assigned_to_name,
+                t.assigned_to_email,
+                t.created_at,
+                c.name AS campus_name,
+                b.name AS building_name,
+                r.name AS room_name,
+                d.device_type,
+                d.label AS device_label
+            FROM tickets t
+            LEFT JOIN campuses c ON c.id = t.campus_id
+            LEFT JOIN buildings b ON b.id = t.building_id
+            LEFT JOIN rooms r ON r.id = t.room_id
+            LEFT JOIN devices d ON d.id = t.device_id
+            WHERE t.created_at <= :e AND (t.resolved_at IS NULL OR t.resolved_at > :e)
+            ORDER BY t.created_at ASC
+            LIMIT 12');
+        $stmt->execute([':e' => $end]);
+        $oldestOpen = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmt = $pdo->prepare('SELECT
+                t.ticket_number,
+                t.severity,
+                t.status,
+                t.assigned_to_name,
+                t.assigned_to_email,
+                t.created_at,
+                c.name AS campus_name,
+                b.name AS building_name,
+                r.name AS room_name
+            FROM tickets t
+            LEFT JOIN campuses c ON c.id = t.campus_id
+            LEFT JOIN buildings b ON b.id = t.building_id
+            LEFT JOIN rooms r ON r.id = t.room_id
+            WHERE t.severity = "Critical" AND t.created_at <= :e AND (t.resolved_at IS NULL OR t.resolved_at > :e)
+            ORDER BY t.created_at ASC
+            LIMIT 12');
+        $stmt->execute([':e' => $end]);
+        $criticalOpen = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $periodLabel = $period === 'biweekly' ? 'Bi-weekly' : ($period === 'custom' ? 'Custom' : 'Weekly');
+
+        $this->view('admin/report', [
+            'pageTitle' => 'Management Report',
+            'pageSubtitle' => 'Weekly / Bi-weekly operational summary for Head of IT',
+            'period' => $period,
+            'periodLabel' => $periodLabel,
+            'start' => $start,
+            'end' => $end,
+            'stats' => [
+                'created' => $createdCount,
+                'resolved' => $resolvedCount,
+                'open_as_of_end' => $openAsOfEnd,
+                'critical_open_as_of_end' => $criticalOpenAsOfEnd,
+                'aging_7' => $aging7,
+                'aging_14' => $aging14,
+            ],
+            'severityCounts' => $severityCounts,
+            'workload' => is_array($workload) ? $workload : [],
+            'oldestOpen' => is_array($oldestOpen) ? $oldestOpen : [],
+            'criticalOpen' => is_array($criticalOpen) ? $criticalOpen : [],
+        ]);
+    }
+
     public function dashboard(): void
     {
         $this->requireAdmin();

@@ -103,13 +103,13 @@ $campuses = $campuses ?? [];
   <div class="card">
     <div class="card-h">
       <h2>Security</h2>
-      <p>After login, you will be required to enter a 2FA code.</p>
+      <p>After registration, you will verify your email. After login, you will be required to enter a 2FA code sent by email.</p>
     </div>
     <div class="card-b">
       <div class="kv">
         <div class="line"><span>Account</span><span>@ksg.ac.ke only</span></div>
-        <div class="line"><span>Password</span><span>Strong rules enforced</span></div>
-        <div class="line"><span>2FA</span><span>6-digit code</span></div>
+        <div class="line"><span>Email</span><span>Verification link</span></div>
+        <div class="line"><span>2FA</span><span>6-digit code by email</span></div>
       </div>
     </div>
   </div>

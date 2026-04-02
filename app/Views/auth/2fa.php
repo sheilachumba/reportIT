@@ -42,13 +42,13 @@ $error = $error ?? null;
 
   <div class="card">
     <div class="card-h">
-      <h2>Email delivery (simulated)</h2>
-      <p>In a live deployment the 2FA code would be emailed to your @ksg.ac.ke address.</p>
+      <h2>Email delivery</h2>
+      <p>The 2FA code is sent to your @ksg.ac.ke email address. Check your inbox/spam folder.</p>
     </div>
     <div class="card-b">
       <div class="kv">
         <div class="line"><span>Delivery</span><span>Email</span></div>
-        <div class="line"><span>Mode</span><span>Simulation</span></div>
+        <div class="line"><span>Mode</span><span>SMTP</span></div>
       </div>
     </div>
   </div>

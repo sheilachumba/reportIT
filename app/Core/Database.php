@@ -94,10 +94,26 @@ final class Database
                 email TEXT NOT NULL UNIQUE,
                 campus_id INTEGER,
                 password_hash TEXT NOT NULL,
+                email_verified_at TEXT,
+                twofa_enabled INTEGER NOT NULL DEFAULT 1,
+                twofa_enabled_at TEXT,
                 created_at TEXT NOT NULL
             )');
 
             $this->ensureUsersCampusIdColumn();
+            $this->ensureUsersEmailVerifiedAtColumn();
+            $this->ensureUsersTwofaEnabledColumn();
+            $this->ensureUsersTwofaEnabledAtColumn();
+
+            $this->pdo->exec('CREATE TABLE IF NOT EXISTS auth_email_verifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token_hash TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                consumed_at TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )');
 
             $this->pdo->exec('CREATE TABLE IF NOT EXISTS auth_2fa_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,6 +188,7 @@ final class Database
             $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_rooms_building_id ON rooms(building_id)');
             $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_devices_room_id ON devices(room_id)');
             $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at)');
+            $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_auth_email_verifications_user_id ON auth_email_verifications(user_id)');
             $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_auth_2fa_codes_user_id ON auth_2fa_codes(user_id)');
             return;
         }
@@ -183,12 +200,29 @@ final class Database
                 email VARCHAR(190) NOT NULL,
                 campus_id INT NULL,
                 password_hash VARCHAR(255) NOT NULL,
+                email_verified_at DATETIME NULL,
+                twofa_enabled TINYINT(1) NOT NULL DEFAULT 1,
+                twofa_enabled_at DATETIME NULL,
                 created_at DATETIME NOT NULL,
                 UNIQUE KEY uq_users_email (email),
                 KEY idx_users_campus_id (campus_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
             $this->ensureUsersCampusIdColumn();
+            $this->ensureUsersEmailVerifiedAtColumn();
+            $this->ensureUsersTwofaEnabledColumn();
+            $this->ensureUsersTwofaEnabledAtColumn();
+
+            $this->pdo->exec('CREATE TABLE IF NOT EXISTS auth_email_verifications (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                token_hash VARCHAR(64) NOT NULL,
+                expires_at DATETIME NOT NULL,
+                consumed_at DATETIME NULL,
+                created_at DATETIME NOT NULL,
+                KEY idx_auth_email_verifications_user_id (user_id),
+                CONSTRAINT fk_auth_email_verifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
             $this->pdo->exec('CREATE TABLE IF NOT EXISTS auth_2fa_codes (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -280,17 +314,105 @@ final class Database
         }
     }
 
+    private function ensureUsersEmailVerifiedAtColumn(): void
+    {
+        try {
+            $this->pdo->query('SELECT email_verified_at FROM users LIMIT 1');
+            return;
+        } catch (\Throwable $e) {
+        }
+
+        if ($this->driver === 'sqlite') {
+            try {
+                $this->pdo->exec('ALTER TABLE users ADD COLUMN email_verified_at TEXT');
+            } catch (\Throwable $e) {
+            }
+            return;
+        }
+
+        if ($this->driver === 'mysql') {
+            try {
+                $this->pdo->exec('ALTER TABLE users ADD COLUMN email_verified_at DATETIME NULL');
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+
+    private function ensureUsersTwofaEnabledColumn(): void
+    {
+        try {
+            $this->pdo->query('SELECT twofa_enabled FROM users LIMIT 1');
+            return;
+        } catch (\Throwable $e) {
+        }
+
+        if ($this->driver === 'sqlite') {
+            try {
+                $this->pdo->exec('ALTER TABLE users ADD COLUMN twofa_enabled INTEGER NOT NULL DEFAULT 1');
+            } catch (\Throwable $e) {
+            }
+            return;
+        }
+
+        if ($this->driver === 'mysql') {
+            try {
+                $this->pdo->exec('ALTER TABLE users ADD COLUMN twofa_enabled TINYINT(1) NOT NULL DEFAULT 1');
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+
+    private function ensureUsersTwofaEnabledAtColumn(): void
+    {
+        try {
+            $this->pdo->query('SELECT twofa_enabled_at FROM users LIMIT 1');
+            return;
+        } catch (\Throwable $e) {
+        }
+
+        if ($this->driver === 'sqlite') {
+            try {
+                $this->pdo->exec('ALTER TABLE users ADD COLUMN twofa_enabled_at TEXT');
+            } catch (\Throwable $e) {
+            }
+            return;
+        }
+
+        if ($this->driver === 'mysql') {
+            try {
+                $this->pdo->exec('ALTER TABLE users ADD COLUMN twofa_enabled_at DATETIME NULL');
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+
     public function seedIfEmpty(): void
     {
         $usersCount = (int) $this->pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
         if ($usersCount === 0) {
-            $stmt = $this->pdo->prepare('INSERT INTO users (name, email, password_hash, created_at) VALUES (:name, :email, :password_hash, :created_at)');
+            $stmt = $this->pdo->prepare('INSERT INTO users (name, email, password_hash, email_verified_at, twofa_enabled, twofa_enabled_at, created_at)
+                VALUES (:name, :email, :password_hash, :email_verified_at, :twofa_enabled, :twofa_enabled_at, :created_at)');
             $stmt->execute([
                 ':name' => 'Admin',
                 ':email' => 'admin@ksg.ac.ke',
                 ':password_hash' => password_hash('123456', PASSWORD_DEFAULT),
+                ':email_verified_at' => gmdate('Y-m-d H:i:s'),
+                ':twofa_enabled' => 1,
+                ':twofa_enabled_at' => gmdate('Y-m-d H:i:s'),
                 ':created_at' => gmdate('Y-m-d H:i:s'),
             ]);
+        } else {
+            try {
+                $now = gmdate('Y-m-d H:i:s');
+                $this->pdo->prepare('UPDATE users SET email_verified_at = :v WHERE email = :e AND (email_verified_at IS NULL OR email_verified_at = "")')
+                    ->execute([':v' => $now, ':e' => 'admin@ksg.ac.ke']);
+
+                $this->pdo->prepare('UPDATE users SET twofa_enabled = 1 WHERE email = :e AND (twofa_enabled IS NULL OR twofa_enabled = 0)')
+                    ->execute([':e' => 'admin@ksg.ac.ke']);
+                $this->pdo->prepare('UPDATE users SET twofa_enabled_at = :v WHERE email = :e AND (twofa_enabled_at IS NULL OR twofa_enabled_at = "")')
+                    ->execute([':v' => $now, ':e' => 'admin@ksg.ac.ke']);
+            } catch (\Throwable $e) {
+            }
         }
 
         $count = (int) $this->pdo->query('SELECT COUNT(*) FROM campuses')->fetchColumn();

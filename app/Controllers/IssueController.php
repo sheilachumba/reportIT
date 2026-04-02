@@ -140,6 +140,8 @@ final class IssueController extends Controller
             $this->notifyCriticalTicket($ticketNumber, $campusId, $buildingId, $roomId, $deviceId, (string)$old['description']);
         }
 
+        $this->notifyReporterTicketCreated($ticketNumber);
+
         $this->redirect('/issue/confirm?ticket=' . urlencode($ticketNumber));
     }
 
@@ -395,5 +397,77 @@ final class IssueController extends Controller
             $line = '[' . date('Y-m-d H:i:s') . '] CRITICAL ticket notification (email not sent). ' . $subject . "\n";
             @file_put_contents($logDir . '/notifications.log', $line, FILE_APPEND);
         }
+    }
+
+    private function notifyReporterTicketCreated(string $ticketNumber): void
+    {
+        $ticketNumber = trim($ticketNumber);
+        if ($ticketNumber === '') {
+            return;
+        }
+
+        $stmt = $this->db->pdo()->prepare('SELECT reporter_name, reporter_email, severity, created_at FROM tickets WHERE ticket_number = :t LIMIT 1');
+        $stmt->execute([':t' => $ticketNumber]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $to = trim((string)($row['reporter_email'] ?? ''));
+        if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $name = trim((string)($row['reporter_name'] ?? ''));
+        $severity = (string)($row['severity'] ?? '');
+        $createdAt = (string)($row['created_at'] ?? '');
+
+        $baseUrl = (string)($this->config['app']['base_url'] ?? '');
+        if ($baseUrl === '') {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost:8000');
+            $baseUrl = $scheme . '://' . $host;
+        }
+
+        $logoUrl = rtrim($baseUrl, '/') . '/assets/ksg-logo.png';
+        $logoSrc = $logoUrl;
+        $inlineImages = [];
+        $logoPath = __DIR__ . '/../../public/assets/ksg-logo.png';
+        if (is_file($logoPath)) {
+            $data = @file_get_contents($logoPath);
+            if (is_string($data) && $data !== '') {
+                $logoSrc = 'cid:ksg_logo';
+                $inlineImages = [
+                    [
+                        'cid' => 'ksg_logo',
+                        'mime' => 'image/png',
+                        'filename' => 'ksg-logo.png',
+                        'data' => $data,
+                    ]
+                ];
+            }
+        }
+
+        $subject = 'ReportIT Ticket Created: ' . $ticketNumber;
+        $title = 'Your issue has been received';
+        $intro = 'Hello ' . ($name !== '' ? $name : $to) . ', your IT issue has been submitted successfully. Our IT team will review it and resolve it shortly.';
+        $rows = [
+            'Ticket Number' => $ticketNumber,
+            'Severity' => $severity,
+            'Created At' => $createdAt,
+        ];
+
+        $ctaUrl = rtrim($baseUrl, '/') . '/';
+        $html = Mailer::renderBrandedEmail($title, $intro, $rows, $ctaUrl, 'Open ReportIT', $logoSrc);
+
+        $mailer = new Mailer($this->config);
+        $ok = $mailer->sendHtml($to, $subject, $html, '', $inlineImages);
+        if ($ok) {
+            return;
+        }
+
+        $logDir = __DIR__ . '/../../storage/logs';
+        if (!is_dir($logDir)) {
+            @mkdir($logDir, 0777, true);
+        }
+        $line = '[' . date('Y-m-d H:i:s') . '] Ticket created email failed. ticket=' . $ticketNumber . ' to=' . $to . ' err=' . $mailer->lastError() . "\n";
+        @file_put_contents($logDir . '/notifications.log', $line, FILE_APPEND);
     }
 }

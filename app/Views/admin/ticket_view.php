@@ -105,6 +105,57 @@ $description = trim((string)($ticket['description'] ?? ''));
         </div>
       </div>
     <?php endif; ?>
+
+    <div class="admin-subgrid">
+      <div class="card">
+        <div class="card-h">
+          <h2>Status Management</h2>
+          <p>Update the ticket status.</p>
+        </div>
+        <div class="card-b">
+          <div class="kv" style="margin-bottom:12px">
+            <div class="line"><span>Severity</span><span><span class="chip <?php echo $sevClass; ?>"><?php echo htmlspecialchars($sev); ?></span></span></div>
+            <div class="line"><span>Status</span><span><span class="chip"><?php echo htmlspecialchars($status); ?></span></span></div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:10px">
+            <form method="post" action="/admin/tickets/update">
+              <input type="hidden" name="ticket" value="<?php echo htmlspecialchars($ticketNumber); ?>" />
+              <input type="hidden" name="action" value="mark_in_progress" />
+              <button class="btn btn-secondary" type="submit">Mark In Progress</button>
+            </form>
+
+            <form method="post" action="/admin/tickets/update">
+              <input type="hidden" name="ticket" value="<?php echo htmlspecialchars($ticketNumber); ?>" />
+              <input type="hidden" name="action" value="mark_resolved" />
+              <button class="btn btn-secondary" type="submit">Mark as Resolved</button>
+            </form>
+
+            <form method="post" action="/admin/tickets/update">
+              <input type="hidden" name="ticket" value="<?php echo htmlspecialchars($ticketNumber); ?>" />
+              <input type="hidden" name="action" value="reopen" />
+              <button class="btn btn-secondary" type="submit">Reopen Ticket</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <h2>Timeline</h2>
+          <p>Key timestamps for this ticket.</p>
+        </div>
+        <div class="card-b">
+          <div class="kv">
+            <div class="line"><span>Created</span><span><?php echo htmlspecialchars($createdAt); ?></span></div>
+            <div class="line"><span>Last Updated</span><span><?php echo htmlspecialchars($updatedAt !== '' ? $updatedAt : $createdAt); ?></span></div>
+            <?php if ($resolvedAt !== ''): ?>
+              <div class="line"><span>Resolved</span><span><?php echo htmlspecialchars($resolvedAt); ?></span></div>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div style="display:flex; flex-direction:column; gap:18px">
@@ -153,55 +204,6 @@ $description = trim((string)($ticket['description'] ?? ''));
 
           <button class="btn btn-secondary" type="submit">Reassign Ticket</button>
         </form>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-h">
-        <h2>Status Management</h2>
-        <p>Update the ticket status.</p>
-      </div>
-      <div class="card-b">
-        <div class="kv" style="margin-bottom:12px">
-          <div class="line"><span>Severity</span><span><span class="chip <?php echo $sevClass; ?>"><?php echo htmlspecialchars($sev); ?></span></span></div>
-          <div class="line"><span>Status</span><span><span class="chip"><?php echo htmlspecialchars($status); ?></span></span></div>
-        </div>
-
-        <div style="display:flex; flex-direction:column; gap:10px">
-          <form method="post" action="/admin/tickets/update">
-            <input type="hidden" name="ticket" value="<?php echo htmlspecialchars($ticketNumber); ?>" />
-            <input type="hidden" name="action" value="mark_in_progress" />
-            <button class="btn btn-secondary" type="submit">Mark In Progress</button>
-          </form>
-
-          <form method="post" action="/admin/tickets/update">
-            <input type="hidden" name="ticket" value="<?php echo htmlspecialchars($ticketNumber); ?>" />
-            <input type="hidden" name="action" value="mark_resolved" />
-            <button class="btn btn-secondary" type="submit">Mark as Resolved</button>
-          </form>
-
-          <form method="post" action="/admin/tickets/update">
-            <input type="hidden" name="ticket" value="<?php echo htmlspecialchars($ticketNumber); ?>" />
-            <input type="hidden" name="action" value="reopen" />
-            <button class="btn btn-secondary" type="submit">Reopen Ticket</button>
-          </form>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-h">
-        <h2>Timeline</h2>
-        <p>Key timestamps for this ticket.</p>
-      </div>
-      <div class="card-b">
-        <div class="kv">
-          <div class="line"><span>Created</span><span><?php echo htmlspecialchars($createdAt); ?></span></div>
-          <div class="line"><span>Last Updated</span><span><?php echo htmlspecialchars($updatedAt !== '' ? $updatedAt : $createdAt); ?></span></div>
-          <?php if ($resolvedAt !== ''): ?>
-            <div class="line"><span>Resolved</span><span><?php echo htmlspecialchars($resolvedAt); ?></span></div>
-          <?php endif; ?>
-        </div>
       </div>
     </div>
   </div>

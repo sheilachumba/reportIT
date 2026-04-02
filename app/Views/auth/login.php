@@ -12,13 +12,8 @@ $next = (string)($_GET['next'] ?? '/');
 <div class="grid">
   <div class="card">
     <div class="card-h">
-      <div style="display:flex; align-items:center; gap:12px">
-        <img src="/assets/ksg-logo.png" alt="KSG" style="height:44px; width:auto" />
-        <div>
       <h2>Login</h2>
       <p>Use your official KSG email account to access the reporting system.</p>
-        </div>
-      </div>
     </div>
     <div class="card-b">
       <?php if (is_string($notice) && $notice !== ''): ?>
@@ -59,7 +54,6 @@ $next = (string)($_GET['next'] ?? '/');
               </span>
             </button>
           </div>
-          <div class="help">Default seeded account: admin@ksg.ac.ke / 123456</div>
         </div>
 
         <div style="display:flex; gap:12px; align-items:center; justify-content:flex-end; margin-top:10px">
@@ -76,15 +70,12 @@ $next = (string)($_GET['next'] ?? '/');
   <div class="card">
     <div class="card-h">
       <h2>Security</h2>
-      <p>This system uses 2FA to secure access.</p>
+      <p>This system uses email verification and 2FA to secure access.</p>
     </div>
     <div class="card-b">
       <div class="kv">
         <div class="line"><span>Step</span><span>Password login</span></div>
-        <div class="line"><span>Step</span><span>2FA code verification</span></div>
-      </div>
-      <div class="footer-note">
-        For production, connect email delivery (SMTP/API). Right now the 2FA code is shown as a simulation.
+        <div class="line"><span>Step</span><span>2FA code sent by email</span></div>
       </div>
     </div>
   </div>
